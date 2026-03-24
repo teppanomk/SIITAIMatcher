@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIIT AI Matcher</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+textarea { width: 100%; height: 150px; margin-bottom: 10px; }
+button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+.result { border-bottom: 1px solid #ccc; padding: 10px 0; }
+.pass { color: green; font-weight: bold; }
+.fail { color: red; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>🎯 ระบบตรวจสอบความสอดคล้องรายวิชา (SIIT AI Matcher)</h1>
+<p>กรอกคำอธิบายรายวิชาที่ต้องการตรวจสอบ:</p>
+<textarea id="courseInput" placeholder="Paste course description here..."></textarea>
+<br>
+<button onclick="checkCourses()">🔍 ตรวจสอบความสอดคล้อง</button>
+
+<h2>ผลลัพธ์</h2>
+<div id="results"></div>
+
+<script>
+const API_KEY = "AIzaSyCMRRU0uA0hp63n2hnIq3fwbvWgkW0cVbY";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWQbAO9EckjIB3K1ybTZO5k01gdhyKyGrom73qsSGdUgQpPO4QjCNIIEw23Gki7DpKuw/exec";
+
+// Cosine similarity function
+function cosineSim(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    for(let i=0;i<a.length;i++){
+        dot += a[i]*b[i];
+        normA += a[i]*a[i];
+        normB += b[i]*b[i];
+    }
+    return dot / (Math.sqrt(normA)*Math.sqrt(normB));
+}
+
+// Fetch embedding from Google API
+async function getEmbedding(text) {
+    const resp = await fetch("https://embedding.googleapis.com/v1/embeddings?model=textembedding-gecko-001", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({ input: text })
+    });
+    const data = await resp.json();
+    return data.data[0].embedding;
+}
+
+// Fetch courses from Apps Script
+async function fetchCourses() {
+    const resp = await fetch(SCRIPT_URL);
+    const data = await resp.json();
+    return data; 
+}
+
+// Main function
+async function checkCourses() {
+    const inputText = document.getElementById("courseInput").value.trim();
+    if(!inputText){ alert("กรุณากรอกคำอธิบายรายวิชา"); return; }
+
+    document.getElementById("results").innerHTML = "<p>⏳ กำลังตรวจสอบ...</p>";
+
+    const courses = await fetchCourses();
+    const queryEmbedding = await getEmbedding(inputText);
+
+    let scored = [];
+    for(let c of courses){
+        const emb = await getEmbedding(c.description);
+        const score = cosineSim(queryEmbedding, emb) * 100;
+        scored.push({...c, score});
+    }
+
+    scored.sort((a,b)=>b.score - a.score);
+    const top5 = scored.slice(0,5);
+
+    let html = "";
+    top5.forEach((c,i)=>{
+        const status = c.score>=70 ? "✅ PASS" : "❌ FAIL/REVIEW";
+        const cls = c.score>=70 ? "pass" : "fail";
+        html += `<div class="result">
+            <p><strong>อันดับ ${i+1}:</strong> <span class="${cls}">${status}</span> (ความเหมือน ${c.score.toFixed(2)}%)</p>
+            <p>📖 SIIT Course: ${c.code} - ${c.name}</p>
+            <p>📝 เนื้อหา SIIT: ${c.description.substring(0,200)}...</p>
+        </div>`;
+    });
+    document.getElementById("results").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
